@@ -1,11 +1,10 @@
 import { initGsapCore, revealAfterSetup, initScrollRefreshFixes } from './global';
-import { initExample } from './components/example';
+import { initGlobe } from './components/globe';
 
 function init(): void {
   initGsapCore();
 
-  initExample();
-  // Neue Components hier importieren & aufrufen
+  initGlobe();
 
   initScrollRefreshFixes();
 

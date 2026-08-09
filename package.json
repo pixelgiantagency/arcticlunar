@@ -1,7 +1,7 @@
 {
-  "name": "webflow-template",
+  "name": "arcticlunar",
   "version": "0.1.0",
-  "description": "PixelGiant Webflow custom-code template (TypeScript + esbuild + GitHub Actions + jsDelivr)",
+  "description": "Arctic Lunar Custom Code (CSS + TypeScript + esbuild + GitHub Actions + jsDelivr)",
   "license": "UNLICENSED",
   "scripts": {
     "build": "esbuild src/main.ts src/main.css --bundle --minify --outdir=dist --entry-names=bundle",
@@ -19,5 +19,8 @@
     "prettier": "^3.9.5",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.63.0"
+  },
+  "dependencies": {
+    "cobe": "^2.0.1"
   }
 }
