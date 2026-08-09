@@ -1,0 +1,7 @@
+css
+/* FOUC-Schutz: Elemente mit diesem Attribut sind unsichtbar, bis global.ts
+   die Klasse "js-ready" auf <body> setzt (siehe revealAfterSetup() in global.ts).
+   Absichtlich OHNE !important - siehe README, Abschnitt "FOUC-Schutz". */
+body:not(.js-ready) [data-fouc-hide] {
+  opacity: 0;
+}
