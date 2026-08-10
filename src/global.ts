@@ -9,7 +9,7 @@ export function initGsapCore(): void {
   smoother = ScrollSmoother.create({
     wrapper: '.page-wrapper',
     content: '.main-wrapper',
-    smooth: 0.8,
+    smooth: 1,
     effects: true,
     smoothTouch: false,
   });
