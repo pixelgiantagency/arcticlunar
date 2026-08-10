@@ -1,0 +1,24 @@
+/* src/styles/hub-flow.css */
+
+.alx-hub-flow {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.alx-hub-flow svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.alx-hub-node circle:first-child {
+  filter: drop-shadow(0 2px 5px rgba(0, 0, 0, 0.35));
+}
+
+/* Die <img data-hub-icon="..."> Elemente aus Webflow dienen nur als
+   Icon-Quelle fuer JS (nur die src wird ausgelesen) -- sollten sie vor
+   dem JS-Init kurz aufblitzen, hier sicherheitshalber ausblenden. */
+[data-hub-flow] img[data-hub-icon] {
+  display: none;
+}

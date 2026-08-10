@@ -1,10 +1,12 @@
 import { initGsapCore, revealAfterSetup, initScrollRefreshFixes } from './global';
 import { initGlobe } from './components/globe';
+import { initHubFlow } from './components/hub-flow';
 
 function init(): void {
   initGsapCore();
 
   initGlobe();
+  initHubFlow();
 
   initScrollRefreshFixes();
 
