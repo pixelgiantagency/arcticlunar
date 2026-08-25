@@ -1,0 +1,11 @@
+[data-footer-curve-lip] {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  width: 100%;
+  border-radius: 0 0 50% 50% / 0 0 var(--footer-curve-depth, 0px) var(--footer-curve-depth, 0px);
+  pointer-events: none;
+  /* Höhe bewusst NICHT hier gesetzt - kommt aus dem Designer (Height-Feld
+     auf diesem Element). Hintergrundfarbe ebenfalls im Designer setzen,
+     dieselbe Variable wie auf footer_top, für einen nahtlosen Übergang. */
+}
