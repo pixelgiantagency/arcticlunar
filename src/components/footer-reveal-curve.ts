@@ -1,3 +1,5 @@
+// src/components/footer-reveal-curve.ts
+
 export function initFooterRevealCurve(): void {
   const footerTop = document.querySelector<HTMLElement>('[data-footer-top]');
   const footerBottom = document.querySelector<HTMLElement>('[data-footer-bottom]');
