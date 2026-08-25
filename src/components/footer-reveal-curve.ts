@@ -1,9 +1,17 @@
 // src/components/footer-reveal-curve.ts
 
+const FOOTER_GRADIENT_CONFIG = {
+  /** Opacity bei Scroll-Fortschritt 0. Der Maximalwert kommt nicht von hier,
+   * sondern wird live aus der im Designer eingestellten Opacity des
+   * Gradient-Elements gelesen (aktuell 13%). */
+  minOpacity: 0,
+} as const;
+
 export function initFooterRevealCurve(): void {
   const footerTop = document.querySelector<HTMLElement>('[data-footer-top]');
   const footerBottom = document.querySelector<HTMLElement>('[data-footer-bottom]');
   const lip = document.querySelector<HTMLElement>('[data-footer-curve-lip]');
+  const gradient = document.querySelector<HTMLElement>('[data-footer-bottom-gradient]');
   if (!footerTop || !footerBottom || !lip) return; // früh abbrechen, wenn die Seite diese Elemente nicht hat
 
   gsap.registerPlugin(ScrollTrigger);
@@ -16,6 +24,12 @@ export function initFooterRevealCurve(): void {
   window.addEventListener('resize', () => {
     maxDepthPx = lip.offsetHeight;
   });
+
+  // maxOpacity wird EINMALIG ausgelesen, bevor wir per Inline-Style
+  // überschreiben - sonst würden wir bei einem zweiten Lesevorgang nur noch
+  // unseren eigenen, bereits überschriebenen Wert zurückbekommen.
+  const maxOpacity = gradient ? parseFloat(getComputedStyle(gradient).opacity) : 0;
+  if (gradient) gradient.style.opacity = String(FOOTER_GRADIENT_CONFIG.minOpacity);
 
   ScrollTrigger.create({
     trigger: document.body,
@@ -33,6 +47,13 @@ export function initFooterRevealCurve(): void {
       const depth = progress * maxDepthPx;
 
       gsap.set(lip, { '--footer-curve-depth': `${depth}px` });
+
+      if (gradient) {
+        const opacity =
+          FOOTER_GRADIENT_CONFIG.minOpacity +
+          progress * (maxOpacity - FOOTER_GRADIENT_CONFIG.minOpacity);
+        gsap.set(gradient, { opacity });
+      }
     },
   });
 }
