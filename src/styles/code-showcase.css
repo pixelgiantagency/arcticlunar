@@ -14,12 +14,15 @@
    dieses Element. */
 .code-showcase_ide-lines-track {
   position: relative;
+  display: flex;
+  flex-direction: column;
+  row-gap: 0.15rem;
 }
 
 .code-showcase_line {
   position: relative; /* Anker für den absolut positionierten Cursor */
   padding-left: 2.6em; /* deutlicher Abstand Zeilennummer <-> Code, wie in VS Code */
-  white-space: nowrap;
+  white-space: pre; /* erhält mehrfache Leerzeichen (Einrückung) - nowrap kollabiert die trotzdem */
 }
 
 .code-showcase_line::before {

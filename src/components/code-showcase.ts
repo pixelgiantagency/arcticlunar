@@ -9,46 +9,72 @@ interface CodeToken {
 }
 
 // Welcher Wireframe-Bereich rechts "gecoded" wird, wenn diese Zeile
-// fertig getippt ist. Sitzt an der Zeile, nicht am Token.
-type WireframeCue = 'stat1' | 'stat2' | 'stat3' | 'chart' | 'table';
+// fertig ist. Sitzt an der Zeile, nicht am Token.
+type WireframeCue = 'statGroup' | 'chartBox' | 'table';
 
 interface CodeLine {
   tokens: CodeToken[];
+  // 'pop' (Default): Zeile ploppt komplett rein statt Zeichen für
+  // Zeichen. 'type': echter Zeichen-für-Zeichen-Typewriter. Regel: pro
+  // Code-Block ist das öffnende UND das schließende Tag 'type', alles
+  // dazwischen (Props, Inhalte) ist 'pop'.
+  mode?: 'pop' | 'type';
   cue?: WireframeCue;
-  // Markiert die letzte Zeile vor dem UI-relevanten Teil. Ab hier
-  // (exklusiv dieser Zeile) läuft der echte Typewriter statt Fast-Pop.
+  // Markiert den Übergang von reinem Boilerplate zum UI-relevanten Teil
+  // – daran hängen initCodeShowcase() die Sidebar-Icons.
   boundary?: boolean;
 }
+
+// Ab welchem Sichtbarkeits-Anteil (0–1) die Animation zum ersten Mal
+// startet.
+const IN_VIEW_THRESHOLD = 0.3;
 
 // Timings & Physik-Konstanten – hier live dran drehen.
 const TIMING = {
   entranceDuration: 0.7, // einmaliges Einfliegen von IDE- und Browser-Fenster
   entranceStagger: 0.15,
+  // Wie viel früher der Content-Teil (Icons, Code, alles danach) beginnt,
+  // relativ zum Ende der Fenster-Entrance – überlappt bewusst, damit sich
+  // NUR "wann beginnt der Inhalt" verschiebt, nicht die Fenster-Optik
+  // selbst. 0 = wartet bis Fenster komplett fertig eingeflogen sind.
+  contentStartOverlap: 0.2,
   navIconStagger: 0.08,
+  statCardStagger: 0.14, // Abstand zwischen den 3 Stat-Cards, wenn sie als Gruppe reinpoppen
   popDuration: 0.45, // Dauer eines einzelnen Kachel-Pop-ins
   popEase: 'back.out(1.7)',
-  popGroupGap: 0.25, // Pause zwischen "Zeile fertig getippt" und Pop-in – das "Beat"-Gefühl
-  barRevealDuration: 0.35, // die grauen Text-Balken selbst wachsen mit rein
+  popGroupGap: 0.25, // Pause zwischen "Zeile fertig" und Pop-in – das "Beat"-Gefühl
+  barRevealDuration: 0.35,
   barRevealStagger: 0.05,
-  typewriterCharDelay: 0.032, // Basis-Sekunden pro Zeichen (nur im echten Typewriter-Teil)
-  lineDelay: 0.18, // Pause zwischen zwei getippten Zeilen
-  groupPauseDelay: 0.95, // längere Pause bei Leerzeilen im relevanten Teil = "kurzes Nachdenken"
-  popLineDuration: 0.09, // wie schnell eine Boilerplate-Zeile "reinploppt"
-  popLineDelayMin: 0.05, // Pause zwischen zwei Pop-Zeilen, min
-  popLineDelayMax: 0.16, // Pause zwischen zwei Pop-Zeilen, max – bewusst nicht konstant
-  popBlankPause: 0.1, // kurze Pause bei Leerzeilen, solange wir noch im Pop-Teil sind
-  tokenPauseChance: 0.22, // Chance auf eine kleine Zusatz-Pause nach einem Token
-  tokenPauseDuration: 0.16,
+
+  // Zeichen-für-Zeichen-Typewriter (nur mode: 'type')
+  typewriterCharDelay: 0.032, // Basis-Sekunden pro Zeichen
+  charJitterMin: 0.55, // Geschwindigkeits-Schwankung pro Token, min
+  charJitterMax: 1.6, // ...max – bewusst breit, wirkt weniger maschinell
+  tokenPauseChance: 0.24, // Chance auf eine kleine Zusatz-Pause nach einem Token
+  tokenPauseDuration: 0.14,
+  longPauseChance: 0.09, // seltene, deutlich längere "Nachdenk"-Pause
+  longPauseDurationMin: 0.35,
+  longPauseDurationMax: 0.65,
+  lineDelay: 0.16, // Pause zwischen zwei getippten Zeilen
+
+  // Zeilen-Pop (mode: 'pop' bzw. Default)
+  popLineDurationMin: 0.06,
+  popLineDurationMax: 0.15,
+  popLineDelayMin: 0.04,
+  popLineDelayMax: 0.2,
+  popBlankPause: 0.1,
+  groupPauseDelay: 0.65, // Pause bei Leerzeilen im relevanten Teil
+
   chartLineDuration: 0.9,
   loopPause: 1.4, // Pause zwischen zwei kompletten Loop-Durchläufen
 } as const;
 
 // Code-Inhalt fürs IDE-Fenster. Bewusst als Daten gepflegt statt in
-// Webflow getippt (siehe animation-component-conventions.md). Realistisch
-// verschachtelter React-Dashboard-Component (Interface, Hooks, mehrzeilige
-// Props) statt eines simplen Einzeilers – Cues sitzen jeweils auf der
-// SCHLIESSENDEN Zeile ("/>") einer Komponente, weil das Element erst dann
-// "fertig gecoded" ist.
+// Webflow getippt (siehe animation-component-conventions.md). Boilerplate
+// (Imports, Function-Shell) bewusst kurz gehalten, damit es schnell zum
+// UI-relevanten Teil kommt. Pro Code-Block (StatCard/Chart/DataTable,
+// section, div) ist das öffnende und schließende Tag 'type', der Inhalt
+// dazwischen 'pop'.
 const CODE_LINES: CodeLine[] = [
   {
     tokens: [
@@ -80,102 +106,12 @@ const CODE_LINES: CodeLine[] = [
   { tokens: [] },
   {
     tokens: [
-      { text: 'interface ', type: 'keyword' },
-      { text: 'DashboardProps ', type: 'function' },
-      { text: '{', type: 'plain' },
-    ],
-  },
-  {
-    tokens: [
-      { text: '  workspaceId', type: 'plain' },
-      { text: ': ', type: 'punct' },
-      { text: 'string', type: 'string' },
-      { text: ';', type: 'punct' },
-    ],
-  },
-  {
-    tokens: [
-      { text: '  range?', type: 'plain' },
-      { text: ': ', type: 'punct' },
-      { text: "'7d' | '30d' | '90d'", type: 'string' },
-      { text: ';', type: 'punct' },
-    ],
-  },
-  { tokens: [{ text: '}', type: 'plain' }] },
-  { tokens: [] },
-  {
-    tokens: [
       { text: 'export ', type: 'keyword' },
       { text: 'function ', type: 'keyword' },
-      { text: 'Dashboard', type: 'function' },
-      { text: '({ workspaceId, range = ', type: 'plain' },
-      { text: "'30d'", type: 'string' },
-      { text: ' }: ', type: 'punct' },
-      { text: 'DashboardProps', type: 'string' },
-      { text: ') {', type: 'plain' },
+      { text: 'Dashboard()', type: 'function' },
+      { text: ' {', type: 'plain' },
     ],
   },
-  {
-    tokens: [
-      { text: '  const ', type: 'keyword' },
-      { text: '{ data, isLoading, error } ', type: 'plain' },
-      { text: '= ', type: 'punct' },
-      { text: 'useDashboardData', type: 'function' },
-      { text: '(workspaceId, range);', type: 'plain' },
-    ],
-  },
-  {
-    tokens: [
-      { text: '  const ', type: 'keyword' },
-      { text: '[selectedMetric, setSelectedMetric] ', type: 'plain' },
-      { text: '= ', type: 'punct' },
-      { text: 'useState', type: 'function' },
-      { text: "('revenue');", type: 'plain' },
-    ],
-  },
-  { tokens: [] },
-  {
-    tokens: [
-      { text: '  useEffect', type: 'function' },
-      { text: '(() => {', type: 'plain' },
-    ],
-  },
-  {
-    tokens: [
-      { text: '    if ', type: 'keyword' },
-      { text: '(!data) ', type: 'plain' },
-      { text: 'return', type: 'keyword' },
-      { text: ';', type: 'punct' },
-    ],
-  },
-  {
-    tokens: [
-      { text: '    document.title ', type: 'plain' },
-      { text: '= ', type: 'punct' },
-      { text: '`Dashboard · ${data.workspaceName}`', type: 'string' },
-      { text: ';', type: 'punct' },
-    ],
-  },
-  { tokens: [{ text: '  }, [data]);', type: 'plain' }] },
-  { tokens: [] },
-  {
-    tokens: [
-      { text: '  if ', type: 'keyword' },
-      { text: '(isLoading) ', type: 'plain' },
-      { text: 'return ', type: 'keyword' },
-      { text: '<DashboardSkeleton />;', type: 'function' },
-    ],
-  },
-  {
-    tokens: [
-      { text: '  if ', type: 'keyword' },
-      { text: '(error) ', type: 'plain' },
-      { text: 'return ', type: 'keyword' },
-      { text: '<ErrorState ', type: 'function' },
-      { text: 'message={error.message} />;', type: 'plain' },
-    ],
-  },
-  { tokens: [] },
   {
     tokens: [
       { text: '  return ', type: 'keyword' },
@@ -183,6 +119,7 @@ const CODE_LINES: CodeLine[] = [
     ],
   },
   {
+    mode: 'type',
     boundary: true,
     tokens: [
       { text: '    <div ', type: 'plain' },
@@ -192,6 +129,7 @@ const CODE_LINES: CodeLine[] = [
     ],
   },
   {
+    mode: 'type',
     tokens: [
       { text: '      <section ', type: 'plain' },
       { text: 'className=', type: 'plain' },
@@ -209,46 +147,34 @@ const CODE_LINES: CodeLine[] = [
   {
     tokens: [
       { text: '          value=', type: 'plain' },
-      { text: '{formatCurrency(data.revenue)}', type: 'plain' },
+      { text: '"$12.4k"', type: 'string' },
     ],
   },
-  {
-    tokens: [{ text: '          trend={data.revenueTrend}', type: 'plain' }],
-  },
-  { cue: 'stat1', tokens: [{ text: '        />', type: 'function' }] },
-  { tokens: [{ text: '        <StatCard', type: 'function' }] },
+  { cue: 'statGroup', tokens: [{ text: '        />', type: 'function' }] },
   {
     tokens: [
-      { text: '          label=', type: 'plain' },
-      { text: '"Users"', type: 'string' },
-    ],
-  },
-  {
-    tokens: [
-      { text: '          value=', type: 'plain' },
-      { text: '{formatNumber(data.activeUsers)}', type: 'plain' },
-    ],
-  },
-  { tokens: [{ text: '          trend={data.usersTrend}', type: 'plain' }] },
-  { cue: 'stat2', tokens: [{ text: '        />', type: 'function' }] },
-  { tokens: [{ text: '        <StatCard', type: 'function' }] },
-  {
-    tokens: [
-      { text: '          label=', type: 'plain' },
-      { text: '"Growth"', type: 'string' },
+      { text: '        <StatCard ', type: 'function' },
+      { text: 'label=', type: 'plain' },
+      { text: '"Users" ', type: 'string' },
+      { text: 'value=', type: 'plain' },
+      { text: '"1,204" ', type: 'string' },
+      { text: '/>', type: 'plain' },
     ],
   },
   {
     tokens: [
-      { text: '          value=', type: 'plain' },
-      { text: '{`${data.growthRate}%`}', type: 'plain' },
+      { text: '        <StatCard ', type: 'function' },
+      { text: 'label=', type: 'plain' },
+      { text: '"Growth" ', type: 'string' },
+      { text: 'value=', type: 'plain' },
+      { text: '"+18%" ', type: 'string' },
+      { text: '/>', type: 'plain' },
     ],
   },
-  { tokens: [{ text: '          trend={data.growthTrend}', type: 'plain' }] },
-  { cue: 'stat3', tokens: [{ text: '        />', type: 'function' }] },
   { tokens: [{ text: '      </section>', type: 'plain' }] },
   { tokens: [] },
   {
+    cue: 'chartBox',
     tokens: [
       { text: '      <section ', type: 'plain' },
       { text: 'className=', type: 'plain' },
@@ -256,13 +182,9 @@ const CODE_LINES: CodeLine[] = [
       { text: '>', type: 'plain' },
     ],
   },
-  { tokens: [{ text: '        <Chart', type: 'function' }] },
-  { tokens: [{ text: '          data={data.weeklyStats}', type: 'plain' }] },
-  { tokens: [{ text: '          metric={selectedMetric}', type: 'plain' }] },
-  {
-    tokens: [{ text: '          onMetricChange={setSelectedMetric}', type: 'plain' }],
-  },
-  { cue: 'chart', tokens: [{ text: '        />', type: 'function' }] },
+  { mode: 'type', tokens: [{ text: '        <Chart', type: 'function' }] },
+  { tokens: [{ text: '          data={weeklyStats}', type: 'plain' }] },
+  { mode: 'type', tokens: [{ text: '        />', type: 'function' }] },
   { tokens: [{ text: '      </section>', type: 'plain' }] },
   { tokens: [] },
   {
@@ -273,22 +195,51 @@ const CODE_LINES: CodeLine[] = [
       { text: '>', type: 'plain' },
     ],
   },
-  { tokens: [{ text: '        <DataTable', type: 'function' }] },
-  { tokens: [{ text: '          rows={data.recentOrders}', type: 'plain' }] },
-  { tokens: [{ text: '          columns={ORDER_COLUMNS}', type: 'plain' }] },
-  {
-    tokens: [{ text: '          onRowClick={handleOrderClick}', type: 'plain' }],
-  },
-  { cue: 'table', tokens: [{ text: '        />', type: 'function' }] },
-  { tokens: [{ text: '      </section>', type: 'plain' }] },
-  { tokens: [{ text: '    </div>', type: 'plain' }] },
+  { mode: 'type', tokens: [{ text: '        <DataTable', type: 'function' }] },
+  { tokens: [{ text: '          rows={recentOrders}', type: 'plain' }] },
+  { mode: 'type', cue: 'table', tokens: [{ text: '        />', type: 'function' }] },
+  { mode: 'type', tokens: [{ text: '      </section>', type: 'plain' }] },
+  { mode: 'type', tokens: [{ text: '    </div>', type: 'plain' }] },
   { tokens: [{ text: '  );', type: 'plain' }] },
   { tokens: [{ text: '}', type: 'plain' }] },
 ];
 
+// Läuft durch alle overflow:hidden-Vorfahren hoch und berechnet die
+// tatsächlich sichtbare Fläche als Schnittmenge – falls mehrere
+// verschachtelte Boxen clippen, reicht es nicht, nur die eigene Box zu
+// betrachten.
+function getVisibleClipRect(el: HTMLElement): DOMRect {
+  let rect = el.getBoundingClientRect();
+  let parent = el.parentElement;
+
+  while (parent) {
+    const style = getComputedStyle(parent);
+    if (style.overflow === 'hidden' || style.overflowY === 'hidden') {
+      const parentRect = parent.getBoundingClientRect();
+      const top = Math.max(rect.top, parentRect.top);
+      const bottom = Math.min(rect.bottom, parentRect.bottom);
+      const left = Math.max(rect.left, parentRect.left);
+      const right = Math.min(rect.right, parentRect.right);
+      rect = new DOMRect(left, top, Math.max(0, right - left), Math.max(0, bottom - top));
+    }
+    parent = parent.parentElement;
+  }
+
+  return rect;
+}
+
+function renderTokens(container: HTMLElement, tokens: CodeToken[]): void {
+  tokens.forEach((token) => {
+    const span = document.createElement('span');
+    span.className = `code-showcase_token code-showcase_token-${token.type}`;
+    span.textContent = token.text;
+    container.appendChild(span);
+  });
+}
+
 // Baut die Zeilen-Elemente einmalig auf (persistieren über alle Loops)
 // und gibt eine Timeline zurück, plus die Zeitpunkte für die Cues und
-// den Übergang zum Typewriter-Teil (daran hängt initCodeShowcase() die
+// den Übergang zum relevanten Teil (daran hängt initCodeShowcase() die
 // Sidebar-Icons und die Kachel-Pop-ins).
 function buildTypewriter(linesContainer: HTMLElement): {
   timeline: gsap.core.Timeline;
@@ -299,7 +250,6 @@ function buildTypewriter(linesContainer: HTMLElement): {
   const tl = gsap.timeline();
   const cueTimes: Partial<Record<WireframeCue, number>> = {};
   let navIconsTime = 0;
-  let typewriterStarted = false;
 
   // Track: alle Zeilen landen hier drin, statt direkt im (sichtbaren,
   // overflow:hidden) Viewport – so kann der Track per translateY nach
@@ -316,34 +266,43 @@ function buildTypewriter(linesContainer: HTMLElement): {
 
   tl.set(track, { y: 0 }); // Scroll-Position bei jedem Loop-Start zurücksetzen
 
-  CODE_LINES.forEach((line) => {
-    const lineEl = document.createElement('div');
-    lineEl.className = 'code-showcase_line';
-
+  // Erst ALLE Zeilen-Elemente (noch leer) anlegen, um mit echten
+  // gerenderten Positionen zu messen statt mit geschätzter Zeilenhöhe.
+  const lineEls = CODE_LINES.map(() => {
+    const el = document.createElement('div');
+    el.className = 'code-showcase_line';
     const content = document.createElement('span');
     content.className = 'code-showcase_line-content';
-    lineEl.appendChild(content);
-    track.appendChild(lineEl);
+    el.appendChild(content);
+    track.appendChild(el);
+    return { el, content };
+  });
 
-    const usePop = !typewriterStarted;
+  const viewportRect = getVisibleClipRect(linesContainer);
+  const trackRect = track.getBoundingClientRect();
+  const trackOffset = trackRect.top - viewportRect.top; // echter Abstand Fenster-Oberkante -> Track-Oberkante
+  // Kleiner Sicherheitsabstand: bei so kleiner Schriftgröße kann eine
+  // Zeichen-Glyphe minimal über die rechnerische Line-Height-Box
+  // hinausragen – das lässt sich aus dem Boxmodell nicht exakt
+  // vorhersagen, daher lieber etwas Luft an der Unterkante lassen.
+  const SAFETY_MARGIN_PX = 4;
+  const usableHeight = viewportRect.height - SAFETY_MARGIN_PX;
 
-    // Viewport in Sicht scrollen, bevor diese Zeile drankommt. Rechnet
-    // mit echten Pixel-Positionen, nicht mit einer geschätzten
-    // Zeilenzahl – funktioniert dadurch unabhängig von der tatsächlichen
-    // Card-Größe.
-    tl.call(() => {
-      const overflowY = lineEl.offsetTop + lineEl.offsetHeight - linesContainer.clientHeight;
-      if (overflowY > 0) {
-        gsap.to(track, { y: -overflowY, duration: 0.35, ease: 'power2.out' });
-      }
-    });
+  CODE_LINES.forEach((line, index) => {
+    const { el: lineEl, content } = lineEls[index];
+    const usePop = line.mode !== 'type';
+
+    // Nur die Unterkante zählt: die aktuelle Zeile rutscht exakt bündig
+    // an den unteren Rand, egal ob dadurch oben eine Zeile angeschnitten
+    // wird. Direkte 1:1-Messung, keine Schätzung, kein Runden.
+    const lineBottom = trackOffset + lineEl.offsetTop + lineEl.offsetHeight;
+    if (lineBottom > usableHeight) {
+      tl.to(track, { y: -(lineBottom - usableHeight), duration: 0.35, ease: 'power2.out' });
+    }
 
     if (line.tokens.length === 0) {
       tl.to({}, { duration: usePop ? TIMING.popBlankPause : TIMING.groupPauseDelay });
-      if (line.boundary) {
-        typewriterStarted = true;
-        navIconsTime = tl.duration();
-      }
+      if (line.boundary) navIconsTime = tl.duration();
       return;
     }
 
@@ -363,23 +322,29 @@ function buildTypewriter(linesContainer: HTMLElement): {
     tl.set(cursor, { x: 0, display: 'inline-block' });
 
     if (usePop) {
-      // Boilerplate: Zeile ploppt komplett rein statt Zeichen für Zeichen,
-      // mit leicht unterschiedlichem Delay zur nächsten Zeile.
-      tl.to(content, { width: targetWidth, duration: TIMING.popLineDuration, ease: 'power1.out' });
+      // Inhalt eines Blocks (Props etc.): Zeile ploppt komplett rein
+      // statt Zeichen für Zeichen, Dauer UND Delay leicht unterschiedlich
+      // pro Zeile, damit es nicht mechanisch wirkt.
+      const popDuration =
+        TIMING.popLineDurationMin +
+        Math.random() * (TIMING.popLineDurationMax - TIMING.popLineDurationMin);
+      tl.to(content, { width: targetWidth, duration: popDuration, ease: 'power1.out' });
       tl.set(cursor, { x: targetWidth });
       const gap =
         TIMING.popLineDelayMin + Math.random() * (TIMING.popLineDelayMax - TIMING.popLineDelayMin);
       tl.to({}, { duration: gap });
     } else {
-      // Relevanter Teil: echter Zeichen-für-Zeichen-Typewriter.
+      // Öffnendes/schließendes Tag eines Blocks: echter
+      // Zeichen-für-Zeichen-Typewriter.
       let cumulativeWidth = 0;
-      tokenEls.forEach((span, index) => {
+      tokenEls.forEach((span, tokenIndex) => {
         const tokenWidth = span.offsetWidth;
         const fromWidth = cumulativeWidth;
         cumulativeWidth += tokenWidth;
-        const charCount = line.tokens[index].text.length;
+        const charCount = line.tokens[tokenIndex].text.length;
 
-        const jitter = 0.7 + Math.random() * 0.6; // wirkt weniger maschinell
+        const jitter =
+          TIMING.charJitterMin + Math.random() * (TIMING.charJitterMax - TIMING.charJitterMin);
         const duration = Math.max(charCount, 1) * TIMING.typewriterCharDelay * jitter;
 
         const proxy = { w: fromWidth };
@@ -393,22 +358,30 @@ function buildTypewriter(linesContainer: HTMLElement): {
           },
         });
 
-        if (Math.random() < TIMING.tokenPauseChance) {
+        // Entweder eine seltene, deutlich längere "Nachdenk"-Pause, oder
+        // (häufiger) eine kleine Mikro-Pause, oder gar keine – erzeugt
+        // ein unregelmäßiges, menschlicheres Tipp-Muster.
+        if (Math.random() < TIMING.longPauseChance) {
+          const pause =
+            TIMING.longPauseDurationMin +
+            Math.random() * (TIMING.longPauseDurationMax - TIMING.longPauseDurationMin);
+          tl.to({}, { duration: pause });
+        } else if (Math.random() < TIMING.tokenPauseChance) {
           tl.to({}, { duration: TIMING.tokenPauseDuration });
         }
       });
 
-      if (line.cue) {
-        cueTimes[line.cue] = tl.duration();
-      }
-
       tl.to({}, { duration: TIMING.lineDelay });
     }
 
-    if (line.boundary) {
-      typewriterStarted = true;
-      navIconsTime = tl.duration();
+    // Cue-Erfassung gilt für BEIDE Modi (pop und type) – nicht nur für
+    // getippte Zeilen, sonst bleibt ein Cue bei 0 hängen und die
+    // zugehörige Kachel poppt viel zu früh.
+    if (line.cue) {
+      cueTimes[line.cue] = tl.duration();
     }
+
+    if (line.boundary) navIconsTime = tl.duration();
   });
 
   return { timeline: tl, cueTimes, navIconsTime };
@@ -436,6 +409,38 @@ function revealCard(buildLoop: gsap.core.Timeline, card: HTMLElement, time: numb
       time + TIMING.popDuration * 0.4
     );
   }
+}
+
+// Wie revealCard, aber für mehrere Karten als zusammengehörige Gruppe:
+// alle poppen ab demselben Zeitpunkt, nur leicht gestaffelt zueinander,
+// statt jede an einer eigenen Code-Zeile zu hängen.
+function revealCardGroup(
+  buildLoop: gsap.core.Timeline,
+  cards: HTMLElement[],
+  time: number,
+  stagger: number
+): void {
+  buildLoop.to(
+    cards,
+    { opacity: 1, scale: 1, duration: TIMING.popDuration, ease: TIMING.popEase, stagger },
+    time
+  );
+
+  cards.forEach((card, i) => {
+    const bars = card.querySelectorAll<HTMLElement>('.code-showcase_workspace-bar');
+    if (bars.length > 0) {
+      buildLoop.to(
+        bars,
+        {
+          width: (_j, el) => `${(el as HTMLElement).dataset.targetWidth}px`,
+          stagger: TIMING.barRevealStagger,
+          duration: TIMING.barRevealDuration,
+          ease: 'power2.out',
+        },
+        time + i * stagger + TIMING.popDuration * 0.4
+      );
+    }
+  });
 }
 
 export function initCodeShowcase(): void {
@@ -485,8 +490,7 @@ export function initCodeShowcase(): void {
     scale: 0.92,
   });
 
-  // Zielbreite jedes Balkens VOR dem Verstecken messen, damit der
-  // spätere Reveal exakt auf den in Webflow gesetzten Wert zuläuft.
+  // Zielbreite jedes Balkens VOR dem Verstecken messen.
   allBars.forEach((bar) => {
     bar.dataset.targetWidth = String(bar.getBoundingClientRect().width);
     gsap.set(bar, { width: 0 });
@@ -494,14 +498,9 @@ export function initCodeShowcase(): void {
 
   const { timeline: typewriter, cueTimes, navIconsTime } = buildTypewriter(linesContainer);
 
-  // Der eigentliche Loop: Typewriter + Pop-ins, läuft unendlich mit Pause.
   const buildLoop = gsap.timeline({ repeat: -1, repeatDelay: TIMING.loopPause });
-
   buildLoop.add(typewriter, 0);
 
-  // Sidebar-Icons feuern genau am Übergang von Boilerplate zu echtem
-  // Typewriter – fühlt sich an wie "jetzt beginnt der UI-Teil", statt
-  // einfach Teil der Intro-Animation zu sein.
   buildLoop.to(
     navIcons,
     {
@@ -514,34 +513,39 @@ export function initCodeShowcase(): void {
     navIconsTime + TIMING.popGroupGap
   );
 
-  // Jede Stat-Card poppt einzeln, direkt nachdem IHRE Code-Zeile fertig
-  // getippt ist – nicht alle drei im Block hintereinander.
-  revealCard(buildLoop, statCards[0], (cueTimes.stat1 ?? 0) + TIMING.popGroupGap);
-  revealCard(buildLoop, statCards[1], (cueTimes.stat2 ?? 0) + TIMING.popGroupGap);
-  revealCard(buildLoop, statCards[2], (cueTimes.stat3 ?? 0) + TIMING.popGroupGap);
+  revealCardGroup(
+    buildLoop,
+    Array.from(statCards),
+    (cueTimes.statGroup ?? 0) + TIMING.popGroupGap,
+    TIMING.statCardStagger
+  );
 
-  // Chart: erst die Karte, dann die Linie "zeichnen".
-  const chartTime = (cueTimes.chart ?? 0) + TIMING.popGroupGap;
+  // Box kommt früh (an den Start des Chart-Abschnitts im Code gekoppelt).
+  // Kurve + Gradient starten erst, sobald die Box-Pop-Animation selbst
+  // fertig ist - nicht mehr an weiteren Code-Fortschritt gekoppelt.
+  const chartBoxTime = (cueTimes.chartBox ?? 0) + TIMING.popGroupGap;
   buildLoop.to(
     chartCard,
     { opacity: 1, scale: 1, duration: TIMING.popDuration, ease: TIMING.popEase },
-    chartTime
+    chartBoxTime
   );
-  buildLoop.to(chartFill, { opacity: 1, duration: TIMING.chartLineDuration * 0.5 }, '<');
+
+  const chartLineTime = chartBoxTime + TIMING.popDuration;
+  buildLoop.to(chartFill, { opacity: 1, duration: TIMING.chartLineDuration * 0.5 }, chartLineTime);
   buildLoop.to(
     chartLine,
     { strokeDashoffset: 0, duration: TIMING.chartLineDuration, ease: 'power1.inOut' },
-    '<'
+    chartLineTime
   );
 
-  // Untere Reihe: beide Boxen an der DataTable-Zeile.
   const tableTime = (cueTimes.table ?? 0) + TIMING.popGroupGap;
   revealCard(buildLoop, listCard, tableTime);
   revealCard(buildLoop, thumbCard, tableTime + 0.08);
 
   // Master-Timeline: Intro läuft nur EINMAL, danach übernimmt buildLoop
-  // (der seinen eigenen repeat:-1 hat) dauerhaft den Loop-Teil.
-  const master = gsap.timeline();
+  // (der seinen eigenen repeat:-1 hat) dauerhaft den Loop-Teil. Startet
+  // pausiert – erst wenn die Card in den Viewport scrollt, geht's los.
+  const master = gsap.timeline({ paused: true });
   master.to([ideWindow, browserWindow], {
     opacity: 1,
     y: 0,
@@ -549,5 +553,18 @@ export function initCodeShowcase(): void {
     ease: 'power3.out',
     stagger: TIMING.entranceStagger,
   });
-  master.add(buildLoop);
+  master.add(buildLoop, `-=${TIMING.contentStartOverlap}`);
+
+  const observer = new IntersectionObserver(
+    (entries) => {
+      entries.forEach((entry) => {
+        if (entry.isIntersecting) {
+          master.play();
+          observer.unobserve(root);
+        }
+      });
+    },
+    { threshold: IN_VIEW_THRESHOLD }
+  );
+  observer.observe(root);
 }
