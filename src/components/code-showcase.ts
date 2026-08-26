@@ -228,15 +228,6 @@ function getVisibleClipRect(el: HTMLElement): DOMRect {
   return rect;
 }
 
-function renderTokens(container: HTMLElement, tokens: CodeToken[]): void {
-  tokens.forEach((token) => {
-    const span = document.createElement('span');
-    span.className = `code-showcase_token code-showcase_token-${token.type}`;
-    span.textContent = token.text;
-    container.appendChild(span);
-  });
-}
-
 // Baut die Zeilen-Elemente einmalig auf (persistieren über alle Loops)
 // und gibt eine Timeline zurück, plus die Zeitpunkte für die Cues und
 // den Übergang zum relevanten Teil (daran hängt initCodeShowcase() die
