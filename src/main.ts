@@ -1,5 +1,6 @@
 import { initGsapCore, revealAfterSetup, initScrollRefreshFixes } from './global';
 import { initGlobe } from './components/globe';
+import { initCodeShowcase } from './components/code-showcase';
 import { initHubFlow } from './components/hub-flow';
 import { initFooterRevealCurve } from './components/footer-reveal-curve';
 
@@ -7,6 +8,7 @@ function init(): void {
   initGsapCore();
 
   initGlobe();
+  initCodeShowcase();
   initHubFlow();
   initFooterRevealCurve();
 

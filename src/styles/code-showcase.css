@@ -1,0 +1,83 @@
+/* src/styles/code-showcase.css
+   Ergänzt nur das, was Webflow nicht abbilden kann: von JS erzeugte
+   Zeilen, Zeilennummern-Counter, Cursor, Token-Farben.
+   Größen/Farben/Radien der statischen Card selbst sitzen bereits als
+   Webflow-Styles auf der Seite. */
+
+.code-showcase_ide-lines {
+  counter-reset: line;
+}
+
+/* Von JS erzeugt, enthält alle Zeilen. Wird per translateY nach oben
+   geschoben, sobald der Code den sichtbaren Bereich sprengt – die
+   Positionierung der Zeilennummer und des Cursors bezieht sich auf
+   dieses Element. */
+.code-showcase_ide-lines-track {
+  position: relative;
+}
+
+.code-showcase_line {
+  position: relative; /* Anker für den absolut positionierten Cursor */
+  padding-left: 2.6em; /* deutlicher Abstand Zeilennummer <-> Code, wie in VS Code */
+  white-space: nowrap;
+}
+
+.code-showcase_line::before {
+  counter-increment: line;
+  content: counter(line);
+  position: absolute;
+  left: 0;
+  width: 1.4em;
+  text-align: right;
+  color: var(--_theme---text-color--secondary);
+  opacity: 0.5;
+}
+
+.code-showcase_line-content {
+  display: inline-block;
+  overflow: hidden;
+  vertical-align: top;
+}
+
+/* Ein einziger Cursor für die ganze Sequenz, wird per JS in die jeweils
+   aktive Zeile verschoben und per translateX() an die Tipp-Position
+   gesetzt. Absichtlich außerhalb von .code-showcase_line-content, damit
+   er nicht vom overflow:hidden der Breiten-Animation weggeclippt wird. */
+.code-showcase_cursor {
+  position: absolute;
+  top: 0;
+  left: 2.6em;
+  width: 0.08em;
+  height: 1em;
+  background-color: var(--brand--cyan-light);
+  animation: code-showcase-blink 0.9s steps(1) infinite;
+}
+
+@keyframes code-showcase-blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+.code-showcase_token-keyword {
+  color: var(--brand--cyan-light);
+}
+
+.code-showcase_token-string {
+  color: #f2a65a;
+}
+
+.code-showcase_token-comment {
+  color: var(--neutral--neutral);
+  font-style: italic;
+}
+
+.code-showcase_token-function {
+  color: var(--neutral--neutral-lightest);
+  font-weight: 500;
+}
+
+.code-showcase_token-plain,
+.code-showcase_token-punct {
+  color: var(--neutral--neutral-light);
+}
