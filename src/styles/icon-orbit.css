@@ -1,0 +1,42 @@
+[data-icon-orbit] {
+  position: relative;
+  overflow: hidden;
+}
+
+.icon-orbit_canvas {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.icon-orbit_ring {
+  position: absolute;
+  border-radius: 50%;
+  border: 1px solid var(--icon-orbit-ring-color, rgba(255, 255, 255, 0.08));
+  pointer-events: none;
+  z-index: 1;
+}
+
+.icon-orbit_icon {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 2.5rem;
+  height: 2.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--icon-orbit-icon-bg, #fff);
+  border: 1px solid var(--icon-orbit-icon-border-color, transparent);
+  box-shadow: 0 0.25rem 0.75rem rgba(0, 0, 0, 0.12);
+  will-change: transform, opacity;
+  z-index: 2;
+}
+
+.icon-orbit_icon img {
+  width: 60%;
+  height: 60%;
+  object-fit: contain;
+}

@@ -3,6 +3,7 @@ import { initDotsGrid } from './components/dots-grid';
 import { initGlobe } from './components/globe';
 import { initCodeShowcase } from './components/code-showcase';
 import { initHubFlow } from './components/hub-flow';
+import { initIconOrbit } from './components/icon-orbit';
 import { initFooterRevealCurve } from './components/footer-reveal-curve';
 
 function init(): void {
@@ -12,6 +13,7 @@ function init(): void {
   initGlobe();
   initCodeShowcase();
   initHubFlow();
+  initIconOrbit();
   initFooterRevealCurve();
 
   initScrollRefreshFixes();
