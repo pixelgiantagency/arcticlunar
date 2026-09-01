@@ -1,0 +1,30 @@
+/* src/styles/hero-intro.css */
+
+[data-hero-intro] [data-hero-intro-dots],
+[data-hero-intro] [data-hero-intro-subheadline],
+[data-hero-intro] [data-hero-intro-button],
+[data-hero-intro] [data-hero-intro-logos],
+[data-hero-intro-nav] {
+  opacity: 0;
+  visibility: hidden;
+}
+
+.hero-intro-line {
+  display: block;
+}
+
+.hero-intro-cursor {
+  display: inline-block;
+  width: 0.045em;
+  height: 0.85em;
+  margin-left: 0.05em;
+  background-color: currentColor;
+  vertical-align: -0.05em;
+  animation: hero-intro-blink 1s step-end infinite;
+}
+
+@keyframes hero-intro-blink {
+  50% {
+    opacity: 0;
+  }
+}
