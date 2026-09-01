@@ -1,5 +1,7 @@
 // src/components/hero-intro.ts
 
+import { getLenis } from '../global';
+
 /**
  * Page-Load-Intro: Die Hero-Headline wird zunächst groß und mittig getippt,
  * schrumpft danach an ihre eigentliche Position, und der restliche
@@ -49,14 +51,20 @@
  *   - revealStartOffset  → Subheadline+Button relativ zu "navReveal"
  *   - logosStartOffset   → Logo-Marquee relativ zu "navReveal"
  * Für beide gilt: 0 = exakt gleichzeitig mit Nav, negativ = davor,
- * positiv = danach. Beide sind unabhängig voneinander einstellbar — z.B.
- * logosStartOffset: 0.15, revealStartOffset: 0, um die Logos leicht nach
- * Nav/Subheadline/Button versetzt einzublenden, statt alles exakt
- * gleichzeitig (aktueller Default: beide 0, also alles gleichzeitig).
- * Diese Kopplung an feste Labels bleibt korrekt, selbst wenn sich künftig
- * andere Dauer-Werte ändern (z.B. dotsFadeDuration) — anders als eine
- * Berechnung relativ zum "Ende der Timeline", die sich implizit
- * verschieben würde, sobald ein anderes Element später endet als Nav.
+ * positiv = danach. Beide sind unabhängig voneinander einstellbar.
+ *
+ * Scroll-Lock: Solange die Intro-Animation läuft, wird Scrollen verhindert
+ * (siehe lockScroll/unlockScroll) — Lock direkt beim Animationsstart,
+ * Unlock exakt im onComplete der Shrink-Animation, also in dem Moment, in
+ * dem die Heading an ihrer Zielposition angekommen ist (nicht erst nach
+ * Nav/Subheadline/Button/Logos). Zwei Ebenen, beide nötig:
+ *   1. lenis.stop() / lenis.start() (aus src/global.ts, getLenis()) — hält
+ *      Lenis' eigene Wheel-Smoothing-Verarbeitung an, die unabhängig vom
+ *      nativen overflow läuft.
+ *   2. overflow:hidden + touch-action:none auf html/body — laut global.ts
+ *      läuft Lenis mit syncTouch:false, Touch-Scrollen bleibt also bewusst
+ *      nativ und wird von lenis.stop() NICHT abgedeckt. Diese Ebene ist
+ *      auf Mobile die eigentlich entscheidende.
  *
  * Wichtig zu clearProps: hero-intro.css setzt Subheadline/Button/Logo-
  * Marquee/Dots/Nav dauerhaft auf opacity:0; visibility:hidden als FOUC-
@@ -75,7 +83,7 @@ const HERO_INTRO_CONFIG = {
   storageKey: 'hero-intro-played',
   typeSpeedMs: 100, // = MagicUI "duration" Default
   holdAfterTypeMs: 950, // Stehzeit NACH dem Tippen, Cursor blinkt hier weiter
-  introScale: 1.1, // Skalierung der Headline im großen Intro-Zustand (Desktop)
+  introScale: 1.2, // Skalierung der Headline im großen Intro-Zustand (Desktop)
   introScaleMobile: 1.1, // reduzierte Skalierung auf schmalen Viewports
   mobileBreakpoint: 480, // ab hier gilt introScaleMobile
   // Sicherheits-Deckel: die gewünschte Skalierung wird zusätzlich gekappt,
@@ -133,6 +141,57 @@ function toTimelineOffset(seconds: number): string {
 function toLabelOffset(label: string, seconds: number): string {
   if (seconds === 0) return label;
   return `${label}${seconds > 0 ? '+=' : '-='}${Math.abs(seconds)}`;
+}
+
+// Verhindert Scrollen während der Intro-Animation — zwei Ebenen, siehe
+// Datei-Kommentar oben: lenis.stop() für Lenis' Wheel-Smoothing, plus
+// nativer overflow:hidden + touch-action:none-Lock (deckt u.a. Touch ab,
+// das laut global.ts bewusst nicht von Lenis verarbeitet wird). Der
+// native Teil kompensiert zusätzlich die Breite der verschwindenden
+// Scrollbar per padding-right, damit der Content nicht seitlich springt.
+// Vorherige Inline-Styles werden gemerkt und beim Unlock exakt
+// wiederhergestellt (statt hart auf '' zurückzusetzen), falls anderswo im
+// Projekt bereits Inline-Styles auf html/body gesetzt sein sollten.
+let scrollLockPrevious: {
+  htmlOverflow: string;
+  bodyOverflow: string;
+  bodyPaddingRight: string;
+  htmlTouchAction: string;
+} | null = null;
+
+function lockScroll(): void {
+  getLenis()?.stop();
+
+  if (scrollLockPrevious) return; // nativer Teil bereits gesperrt, nicht doppelt merken
+
+  const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
+
+  scrollLockPrevious = {
+    htmlOverflow: document.documentElement.style.overflow,
+    bodyOverflow: document.body.style.overflow,
+    bodyPaddingRight: document.body.style.paddingRight,
+    htmlTouchAction: document.documentElement.style.touchAction,
+  };
+
+  document.documentElement.style.overflow = 'hidden';
+  document.body.style.overflow = 'hidden';
+  document.documentElement.style.touchAction = 'none';
+  if (scrollbarWidth > 0) {
+    document.body.style.paddingRight = `${scrollbarWidth}px`;
+  }
+}
+
+function unlockScroll(): void {
+  getLenis()?.start();
+
+  if (!scrollLockPrevious) return;
+
+  document.documentElement.style.overflow = scrollLockPrevious.htmlOverflow;
+  document.body.style.overflow = scrollLockPrevious.bodyOverflow;
+  document.body.style.paddingRight = scrollLockPrevious.bodyPaddingRight;
+  document.documentElement.style.touchAction = scrollLockPrevious.htmlTouchAction;
+
+  scrollLockPrevious = null;
 }
 
 // Rendert die Zeilen statisch (fertig getippt), z.B. für den Skip-Fall
@@ -244,6 +303,11 @@ export function initHeroIntro(): void {
     return;
   }
 
+  // Ab hier läuft die Animation garantiert — Scroll sofort sperren, nicht
+  // erst nach fontsReady, damit auch die kurze Ladezeit bis dahin schon
+  // abgedeckt ist.
+  lockScroll();
+
   const fontsReady = document.fonts?.ready ?? Promise.resolve();
 
   fontsReady.then(() => {
@@ -297,6 +361,8 @@ export function initHeroIntro(): void {
           // Fixierte Höhe wieder freigeben, damit die Heading an ihrer
           // finalen Position wieder normal responsiv (auto-Höhe) bleibt.
           heading.style.height = '';
+          // Heading ist jetzt am Ziel angekommen — Scroll wieder freigeben.
+          unlockScroll();
         },
       });
 
