@@ -113,13 +113,13 @@ const CONFIG: HubFlowConfig = {
 
   // Deutlich deckend, damit Partikel/Linien dahinter sauber verschwinden
   // (vorher zu transparent -> "scheint durch"-Bug).
-  nodeFill: 'rgba(38, 38, 42, 0.94)',
-  nodeStroke: 'rgba(255, 255, 255, 0.10)',
+  nodeFill: 'var(--_theme---background--card-visual-light)',
+  nodeStroke: 'transparent',
 
-  icon: { outerSize: 20, centerSize: 48 },
+  icon: { outerSize: 20, centerSize: 32 },
 
   line: {
-    color: 'rgba(255, 255, 255, 0.18)',
+    color: 'var(--_theme---border-color--secondary)',
     width: 0.5,
     dashArray: '4 4',
     /** Länge des geraden Stücks direkt am Hub, bevor die Ecke einsetzt. */
@@ -137,7 +137,7 @@ const CONFIG: HubFlowConfig = {
   },
 
   particle: {
-    color: '#34d399',
+    color: '#3cdcff',
     headColor: '#f5f5f5',
     count: 20,
     lapDuration: 2.35,
@@ -150,7 +150,7 @@ const CONFIG: HubFlowConfig = {
   },
 
   pulse: {
-    color: 'rgba(255, 255, 255, 0.35)',
+    color: 'rgba(255, 255, 255, 0.08)',
     ringCount: 2,
     maxRadius: 70,
     duration: 1.1,
