@@ -138,7 +138,7 @@ const CONFIG: HubFlowConfig = {
 
   particle: {
     color: '#3cdcff',
-    headColor: '#f5f5f5',
+    headColor: '#000000',
     count: 20,
     lapDuration: 2.35,
     pauseBetweenLaps: 1.2,
