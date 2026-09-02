@@ -50,19 +50,27 @@
  *   data-icon-bg="#ffffff"            Hintergrundfarbe der Icon-Badges
  *   data-icon-border-color="#e5e7eb"  Randfarbe der Icon-Badges selbst (Default: transparent, kein Rand)
  *   data-ring-color="#e5e7eb"         Randfarbe der Ring-Bögen (nicht der Icon-Badges!)
+ *   data-sphere-color="#5a82ff"       Grundfarbe der Kugel-Partikel
+ *   data-sphere-accent-color="#ff9646" Farbe der vereinzelten Akzent-Partikel
  *
- * Alle drei akzeptieren jedes gültige CSS-Farbformat (Hex, rgb(), hsl(), oklch(),
- * Named Colors ...) oder direkt einen var(--webflow-variable)-Verweis, wenn
- * du eine Webflow-Variable nutzen willst.
+ * Alle fünf akzeptieren jedes gültige CSS-Farbformat (Hex, rgb(), hsl(), oklch(),
+ * Named Colors ...) oder direkt einen var(--webflow-variable)-Verweis, wenn du
+ * eine Webflow-Variable nutzen willst. Bei den beiden Kugel-Farben passiert die
+ * Auflösung technisch anders als bei Hintergrund/Rand (siehe cssColor() unten):
+ * Canvas kennt kein var(), deshalb wird der Wert einmalig beim Init über ein
+ * echtes DOM-Element aufgelöst und in konkrete RGB-Kanäle umgerechnet - ändert
+ * sich die referenzierte Webflow-Variable später zur Laufzeit (z.B. Theme-
+ * Umschaltung ohne Reload), zieht die Kugel das anders als bei den übrigen
+ * Farb-Attributen NICHT automatisch nach.
  */
 
 // ---- Werte zum visuellen Live-Tuning ---------------------------------------
 
-/** Farben der Partikel-Kugel (RGB 0-255, Alpha wird pro Partikel per Tiefe gemischt). */
+/** Default-Farben der Partikel-Kugel (RGB 0-255), überschreibbar per data-sphere-color / data-sphere-accent-color. */
 const SPHERE_COLORS = {
   base: { r: 90, g: 130, b: 255 }, // Grundfarbe der Punkte
   accent: { r: 255, g: 150, b: 70 }, // vereinzelte warme Akzent-Punkte
-  accentChance: 0.06, // Wahrscheinlichkeit pro Punkt für die Akzentfarbe
+  accentChance: 0.07, // Wahrscheinlichkeit pro Punkt für die Akzentfarbe (nicht per Attribut einstellbar)
 };
 
 /** Geometrie & Bewegung der Partikel-Kugel (Größe selbst steht in DEFAULTS.sphereRadius, s.u.). */
@@ -124,6 +132,12 @@ interface Particle {
   rgb: string;
 }
 
+interface RGB {
+  r: number;
+  g: number;
+  b: number;
+}
+
 interface OrbitIcon {
   el: HTMLElement;
   ringIndex: number;
@@ -160,6 +174,40 @@ function applyCssVarFromAttr(el: HTMLElement, cssVar: string, attr: string): voi
   if (value !== null && value.trim() !== '') {
     el.style.setProperty(cssVar, value.trim());
   }
+}
+
+/**
+ * Löst einen beliebigen CSS-Farbwert (Hex, rgb(), hsl(), oklch(), color-mix(),
+ * var(--webflow-variable) ...) zu konkreten RGB-Kanälen auf. Canvas-fillStyle
+ * kann var() nicht selbst auflösen (anders als echte CSS-Properties wie
+ * background), deshalb: ein echtes, unsichtbares DOM-Element im richtigen
+ * Vererbungskontext einfärben, den vom Browser aufgelösten computed style
+ * abgreifen, auf ein 1x1-Canvas zeichnen und die Bytes zurücklesen. Nie hart
+ * auf ein einzelnes Farbformat festlegen.
+ */
+function cssColor(value: string, contextEl: HTMLElement): RGB {
+  const probe = document.createElement('span');
+  probe.style.color = value;
+  contextEl.appendChild(probe);
+  const resolved = getComputedStyle(probe).color;
+  probe.remove();
+
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return { r: 0, g: 0, b: 0 };
+
+  ctx.fillStyle = resolved;
+  ctx.fillRect(0, 0, 1, 1);
+
+  const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data;
+  return { r, g, b };
+}
+
+/** Liest eine Farbe aus einem Webflow-Custom-Attribute und löst sie über cssColor() auf; bei Fehlen greift der Fallback. */
+function readColorAttr(el: HTMLElement, attr: string, fallback: RGB): RGB {
+  const raw = el.getAttribute(attr);
+  if (raw === null || raw.trim() === '') return fallback;
+  return cssColor(raw.trim(), el);
 }
 
 /** Ring-Radien aus Kugelradius + den beiden Abständen ableiten (Ring 1 = sphereRadius + firstRingGap, danach + ringGap je weiterem Ring). */
@@ -229,7 +277,7 @@ function iconOpacity(angle: number): number {
   return 1;
 }
 
-function generateParticles(): Particle[] {
+function generateParticles(baseColor: RGB, accentColor: RGB): Particle[] {
   const particles: Particle[] = [];
 
   for (let i = 0; i < SPHERE.particleCount; i += 1) {
@@ -244,7 +292,7 @@ function generateParticles(): Particle[] {
     const z = Math.sin(phi) * Math.sin(theta) * jitterAmount;
 
     const useAccent = Math.random() < SPHERE_COLORS.accentChance;
-    const c = useAccent ? SPHERE_COLORS.accent : SPHERE_COLORS.base;
+    const c = useAccent ? accentColor : baseColor;
 
     particles.push({
       x,
@@ -369,7 +417,10 @@ export function initIconOrbit(): void {
 
   const ringEls = createRingElements(root);
   const icons = collectIcons(root);
-  const particles = generateParticles();
+
+  const sphereBaseColor = readColorAttr(root, 'data-sphere-color', SPHERE_COLORS.base);
+  const sphereAccentColor = readColorAttr(root, 'data-sphere-accent-color', SPHERE_COLORS.accent);
+  const particles = generateParticles(sphereBaseColor, sphereAccentColor);
 
   const sphereRadius = readNumberAttr(root, 'data-sphere-radius', DEFAULTS.sphereRadius);
   const firstRingGap = readNumberAttr(root, 'data-first-ring-gap', DEFAULTS.firstRingGap);
