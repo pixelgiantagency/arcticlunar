@@ -7,29 +7,47 @@ import createGlobe, { type Marker, type Arc } from 'cobe';
 
 /* =====================================================================
    FARBEN & TRANSPARENZ - hier zentral anpassen. cssColor() akzeptiert
-   jedes gültige CSS-Farbformat (oklch, hsl, rgb, Named Colors, ...) -
-   der Browser selbst rechnet das ins 0-1-RGB-Format um, das cobe
-   erwartet. Siehe Chat-Erklärung.
+   jedes gültige CSS-Farbformat (oklch, hsl, rgb, Named Colors, var(...),
+   auch relative colors wie oklch(from var(--x) ...)).
+
+   Zwei-Schritte-Ansatz, weil keine einzelne Technik allein zuverlässig
+   ist:
+   1) Ein unsichtbares DOM-Element auflösen lassen (nur so kann var()/
+      relative colors im echten Cascade-Kontext berechnet werden -
+      canvas.fillStyle hat keinen Cascade-Zugriff, siehe Chat).
+   2) Das Ergebnis daraus NICHT selbst parsen (moderne Browser geben
+      z.B. "oklch(0.16 0.03 216)" zurück, nicht zwingend "rgb(...)" -
+      ein eigener Regex-Parser würde das falsch interpretieren, siehe
+      Chat), sondern an canvas.fillStyle weiterreichen: das kann jedes
+      ABSOLUTE Farbformat zuverlässig in RGB umrechnen, ihm fehlt nur
+      der Cascade-Zugriff für var()/relative colors - der ist an dieser
+      Stelle aber schon nicht mehr nötig, da bereits aufgelöst.
+
+   `scope` bestimmt, WO im DOM (Schritt 1) aufgelöst wird - wichtig
+   falls eure Webflow-Variable per "Variable Modes" lokal einen anderen
+   Wert hat als global auf :root.
    ===================================================================== */
-function cssColor(value: string): [number, number, number] {
+function cssColor(
+  value: string,
+  scope: HTMLElement = document.documentElement
+): [number, number, number] {
+  // Schritt 1: var()/relative colors im echten Cascade-Kontext auflösen.
+  const probe = document.createElement('span');
+  probe.style.cssText = 'position:absolute;top:0;left:0;visibility:hidden;pointer-events:none;';
+  probe.style.color = value;
+  scope.appendChild(probe);
+  const resolved = getComputedStyle(probe).color; // z.B. "oklch(0.16 0.03 216)" oder "rgb(21, 24, 25)"
+  scope.removeChild(probe);
+
+  // Schritt 2: das jetzt absolute Farbformat zuverlässig in RGB umrechnen.
   const canvas = document.createElement('canvas');
   const ctx = canvas.getContext('2d');
   if (!ctx) return [0, 0, 0];
-  ctx.fillStyle = value; // Browser parst z.B. oklch(...), hsl(...), rgb(...)
+  ctx.fillStyle = resolved;
   ctx.fillRect(0, 0, 1, 1);
   const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data;
   return [r / 255, g / 255, b / 255];
 }
-
-const GLOBE_COLORS = {
-  base: cssColor('rgb(21, 24, 25)'), // baseColor (Globus + Punkte)
-  marker: cssColor('rgb(0, 0, 0)'), // markerColor (unsichtbarer Anker-Marker)
-  arc: cssColor('rgb(255, 255, 255)'), // arcColor (Verbindungslinien)
-  glow: cssColor('rgb(28, 33, 34)'), // glowColor (Schimmer am Rand)
-  opacity: 1, // Transparenz des GESAMTEN Globus (0 = unsichtbar, 1 = voll deckend)
-  dark: 0.6, // 0 = dunkle Punkte auf hellem Grund, 1 = helle Punkte auf dunklem Grund,
-  // Zwischenwerte möglich - bei dunklem "base" i.d.R. Richtung 1
-};
 
 /* =====================================================================
    WEITERE OPTIK-EINSTELLUNGEN - alles, was nicht Farbe ist, aber das
@@ -39,7 +57,7 @@ const SETTINGS = {
   theta: 0.2, // Kipp-Winkel der Kugel (vertikal, -π/2 bis π/2)
   diffuse: 1.5, // Lichtintensität/Kontrast der Beleuchtung
   mapSamples: 16000, // Anzahl der Punkte insgesamt (mehr = feinere "Auflösung")
-  mapBrightness: 12, // wie stark die Punkte hervortreten
+  mapBrightness: 20, // wie stark die Punkte hervortreten
   mapBaseBrightness: 0, // Grund-Helligkeit der "leeren" Bereiche zwischen den Punkten
   markerSize: 0.012, // Größe der (unsichtbaren) Anker-Marker
   markerElevation: 0.02, // Höhe der Marker über der Oberfläche (beeinflusst Pin-Position)
@@ -79,32 +97,37 @@ interface GlobeArc {
   value: number;
 }
 
-// Startwerte + Reihenfolge exakt wie im Original (cdnTraffic init)
 const ARCS: GlobeArc[] = [
-  { id: 'cdn-arc-1', from: [38.95, -77.45], to: [49.01, 2.55], value: 420 }, // IAD -> CDG
-  { id: 'cdn-arc-2', from: [37.62, -122.38], to: [35.55, 139.78], value: 380 }, // SFO -> HND
-  { id: 'cdn-arc-3', from: [49.01, 2.55], to: [1.36, 103.99], value: 290 }, // CDG -> SIN
-  { id: 'cdn-arc-4', from: [38.95, -77.45], to: [-23.43, -46.47], value: 185 }, // IAD -> GRU
-  { id: 'cdn-arc-5', from: [35.55, 139.78], to: [-33.95, 151.18], value: 156 }, // HND -> SYD
-  { id: 'cdn-arc-6', from: [49.01, 2.55], to: [19.09, 72.87], value: 134 }, // CDG -> BOM
+  { id: 'cdn-arc-1', from: [38.95, -77.45], to: [49.01, 2.55], value: 420 },
+  { id: 'cdn-arc-2', from: [37.62, -122.38], to: [35.55, 139.78], value: 380 },
+  { id: 'cdn-arc-3', from: [49.01, 2.55], to: [1.36, 103.99], value: 290 },
+  { id: 'cdn-arc-4', from: [38.95, -77.45], to: [-23.43, -46.47], value: 185 },
+  { id: 'cdn-arc-5', from: [35.55, 139.78], to: [-33.95, 151.18], value: 156 },
+  { id: 'cdn-arc-6', from: [49.01, 2.55], to: [19.09, 72.87], value: 134 },
 ];
 
-/* =====================================================================
-   INIT - Standard-Pattern des Templates: findet das Ziel-Element via
-   data-Attribut, bricht früh ab, wenn es auf dieser Seite nicht existiert.
-   ===================================================================== */
 export function initGlobe(): void {
   const root = document.querySelector<HTMLElement>('[data-globe]');
   if (!root) return;
 
   root.classList.add('alx-globe');
 
+  // GLOBE_COLORS hier (nicht mehr auf Modul-Ebene), damit `root` als
+  // Cascade-Kontext für var()/Variable-Modes zur Verfügung steht.
+  const GLOBE_COLORS = {
+    base: cssColor('oklch(from var(--_theme---background--primary) calc(l + 0.08) c h)', root), // baseColor (Globus + Punkte)
+    marker: cssColor('rgb(0, 0, 0)', root), // markerColor (unsichtbarer Anker-Marker)
+    arc: cssColor('rgb(129, 129, 129)', root), // arcColor (Verbindungslinien)
+    glow: cssColor('rgb(28, 33, 34)', root), // glowColor (Schimmer am Rand)
+    opacity: 0.8, // Transparenz des GESAMTEN Globus (0 = unsichtbar, 1 = voll deckend)
+    dark: 0.65, // 0 = dunkle Punkte auf hellem Grund, 1 = helle Punkte auf dunklem Grund,
+    // Zwischenwerte möglich - bei dunklem "base" i.d.R. Richtung 1
+  };
+
   const canvas = document.createElement('canvas');
   canvas.setAttribute('aria-label', 'CDN Globe: live Traffic zwischen Edge-Standorten');
   root.appendChild(canvas);
 
-  /* ---- DOM-Overlay: Pins (Pyramide + Region-Code) + Traffic-Badges,
-     per offiziellem CSS-Anchor-Mechanismus an Marker/Arcs angedockt ---- */
   MARKERS.forEach((m) => {
     const pin = document.createElement('div');
     pin.className = 'alx-globe-pin';
@@ -130,7 +153,6 @@ export function initGlobe(): void {
     return { el: badge, data: a };
   });
 
-  // Live-Traffic: exakt dieselbe Logik wie das Original (alle 250ms ±10, nie unter 50)
   setInterval(() => {
     badgeEls.forEach(({ el, data }) => {
       data.value = Math.max(50, data.value + Math.floor(Math.random() * 21) - 10);
@@ -138,7 +160,6 @@ export function initGlobe(): void {
     });
   }, 250);
 
-  /* ---- Globus - createGlobe exakt mit den CDN-Werten ---- */
   const width = canvas.offsetWidth;
   const dpr = Math.min(window.devicePixelRatio || 1, window.innerWidth < 640 ? 1.8 : 2);
 
@@ -174,8 +195,6 @@ export function initGlobe(): void {
     opacity: GLOBE_COLORS.opacity,
   });
 
-  /* ---- Drag + Momentum - exakt aus page.tsx (Showcases-Komponente)
-     übernommen: gleiche Divisoren, gleiche Dämpfung, gleiche Theta-Grenzen. ---- */
   let phi = 0;
   let phiOffset = 0;
   let thetaOffset = 0;
@@ -240,7 +259,7 @@ export function initGlobe(): void {
 
   function animate(): void {
     if (!isPaused) {
-      phi += 0.003 * speed;
+      phi += 0.002 * speed;
 
       if (Math.abs(velocity.phi) > 0.0001 || Math.abs(velocity.theta) > 0.0001) {
         phiOffset += velocity.phi;
