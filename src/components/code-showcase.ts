@@ -434,6 +434,22 @@ function revealCardGroup(
   });
 }
 
+// bundle.css wird laut Konventionen dynamisch nachgeladen (kein
+// blockierendes <link> im HTML) - es gibt also keine Garantie, dass es
+// fertig ist, bevor dieses Skript läuft. Ohne das CSS würde die
+// Font-Size beim Browser-Default (~16px) statt bei den erwarteten
+// ~0.4rem liegen, was scrollWidth-Messungen falsch macht und Text in der
+// (noch nicht aktiven) Token-Farbe unsichtbar wirken lässt. Deshalb
+// erst starten, wenn die erwartete kleine Font-Size wirklich greift.
+function waitForStylesReady(el: HTMLElement, callback: () => void, attempts = 0): void {
+  const fontSize = parseFloat(getComputedStyle(el).fontSize);
+  if ((fontSize > 0 && fontSize < 10) || attempts > 90) {
+    callback();
+    return;
+  }
+  requestAnimationFrame(() => waitForStylesReady(el, callback, attempts + 1));
+}
+
 export function initCodeShowcase(): void {
   const root = document.querySelector<HTMLElement>('[data-code-showcase]');
   if (!root) return; // früh abbrechen, wenn die Seite dieses Element nicht hat
@@ -468,94 +484,102 @@ export function initCodeShowcase(): void {
     return;
   }
 
-  // Chart-Linie fürs Zeichnen vorbereiten.
-  const lineLength = chartLine.getTotalLength();
-  gsap.set(chartLine, { strokeDasharray: lineLength, strokeDashoffset: lineLength });
-  gsap.set(chartFill, { opacity: 0 });
+  const start = (): void => {
+    // Chart-Linie fürs Zeichnen vorbereiten.
+    const lineLength = chartLine.getTotalLength();
+    gsap.set(chartLine, { strokeDasharray: lineLength, strokeDashoffset: lineLength });
+    gsap.set(chartFill, { opacity: 0 });
 
-  // Ausgangszustand – bewusst per GSAP statt als Webflow-Style, damit die
-  // Card im Designer normal sichtbar bleibt.
-  gsap.set([ideWindow, browserWindow], { opacity: 0, y: 16 });
-  gsap.set([navIcons, statCards, chartCard, listCard, thumbCard], {
-    opacity: 0,
-    scale: 0.92,
-  });
+    // Ausgangszustand – bewusst per GSAP statt als Webflow-Style, damit die
+    // Card im Designer normal sichtbar bleibt.
+    gsap.set([ideWindow, browserWindow], { opacity: 0, y: 16 });
+    gsap.set([navIcons, statCards, chartCard, listCard, thumbCard], {
+      opacity: 0,
+      scale: 0.92,
+    });
 
-  // Zielbreite jedes Balkens VOR dem Verstecken messen.
-  allBars.forEach((bar) => {
-    bar.dataset.targetWidth = String(bar.getBoundingClientRect().width);
-    gsap.set(bar, { width: 0 });
-  });
+    // Zielbreite jedes Balkens VOR dem Verstecken messen.
+    allBars.forEach((bar) => {
+      bar.dataset.targetWidth = String(bar.getBoundingClientRect().width);
+      gsap.set(bar, { width: 0 });
+    });
 
-  const { timeline: typewriter, cueTimes, navIconsTime } = buildTypewriter(linesContainer);
+    const { timeline: typewriter, cueTimes, navIconsTime } = buildTypewriter(linesContainer);
 
-  const buildLoop = gsap.timeline({ repeat: -1, repeatDelay: TIMING.loopPause });
-  buildLoop.add(typewriter, 0);
+    const buildLoop = gsap.timeline({ repeat: -1, repeatDelay: TIMING.loopPause });
+    buildLoop.add(typewriter, 0);
 
-  buildLoop.to(
-    navIcons,
-    {
+    buildLoop.to(
+      navIcons,
+      {
+        opacity: 1,
+        scale: 1,
+        duration: TIMING.popDuration,
+        ease: TIMING.popEase,
+        stagger: TIMING.navIconStagger,
+      },
+      navIconsTime + TIMING.popGroupGap
+    );
+
+    revealCardGroup(
+      buildLoop,
+      Array.from(statCards),
+      (cueTimes.statGroup ?? 0) + TIMING.popGroupGap,
+      TIMING.statCardStagger
+    );
+
+    // Box kommt früh (an den Start des Chart-Abschnitts im Code gekoppelt).
+    // Kurve + Gradient starten erst, sobald die Box-Pop-Animation selbst
+    // fertig ist - nicht mehr an weiteren Code-Fortschritt gekoppelt.
+    const chartBoxTime = (cueTimes.chartBox ?? 0) + TIMING.popGroupGap;
+    buildLoop.to(
+      chartCard,
+      { opacity: 1, scale: 1, duration: TIMING.popDuration, ease: TIMING.popEase },
+      chartBoxTime
+    );
+
+    const chartLineTime = chartBoxTime + TIMING.popDuration;
+    buildLoop.to(
+      chartFill,
+      { opacity: 1, duration: TIMING.chartLineDuration * 0.5 },
+      chartLineTime
+    );
+    buildLoop.to(
+      chartLine,
+      { strokeDashoffset: 0, duration: TIMING.chartLineDuration, ease: 'power1.inOut' },
+      chartLineTime
+    );
+
+    const tableTime = (cueTimes.table ?? 0) + TIMING.popGroupGap;
+    revealCard(buildLoop, listCard, tableTime);
+    revealCard(buildLoop, thumbCard, tableTime + 0.08);
+
+    // Master-Timeline: Intro läuft nur EINMAL, danach übernimmt buildLoop
+    // (der seinen eigenen repeat:-1 hat) dauerhaft den Loop-Teil. Startet
+    // pausiert – erst wenn die Card in den Viewport scrollt, geht's los.
+    const master = gsap.timeline({ paused: true });
+    master.to([ideWindow, browserWindow], {
       opacity: 1,
-      scale: 1,
-      duration: TIMING.popDuration,
-      ease: TIMING.popEase,
-      stagger: TIMING.navIconStagger,
-    },
-    navIconsTime + TIMING.popGroupGap
-  );
+      y: 0,
+      duration: TIMING.entranceDuration,
+      ease: 'power3.out',
+      stagger: TIMING.entranceStagger,
+    });
+    master.add(buildLoop, `-=${TIMING.contentStartOverlap}`);
 
-  revealCardGroup(
-    buildLoop,
-    Array.from(statCards),
-    (cueTimes.statGroup ?? 0) + TIMING.popGroupGap,
-    TIMING.statCardStagger
-  );
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            master.play();
+            observer.unobserve(root);
+          }
+        });
+      },
+      { threshold: IN_VIEW_THRESHOLD }
+    );
+    observer.observe(root);
+  };
 
-  // Box kommt früh (an den Start des Chart-Abschnitts im Code gekoppelt).
-  // Kurve + Gradient starten erst, sobald die Box-Pop-Animation selbst
-  // fertig ist - nicht mehr an weiteren Code-Fortschritt gekoppelt.
-  const chartBoxTime = (cueTimes.chartBox ?? 0) + TIMING.popGroupGap;
-  buildLoop.to(
-    chartCard,
-    { opacity: 1, scale: 1, duration: TIMING.popDuration, ease: TIMING.popEase },
-    chartBoxTime
-  );
-
-  const chartLineTime = chartBoxTime + TIMING.popDuration;
-  buildLoop.to(chartFill, { opacity: 1, duration: TIMING.chartLineDuration * 0.5 }, chartLineTime);
-  buildLoop.to(
-    chartLine,
-    { strokeDashoffset: 0, duration: TIMING.chartLineDuration, ease: 'power1.inOut' },
-    chartLineTime
-  );
-
-  const tableTime = (cueTimes.table ?? 0) + TIMING.popGroupGap;
-  revealCard(buildLoop, listCard, tableTime);
-  revealCard(buildLoop, thumbCard, tableTime + 0.08);
-
-  // Master-Timeline: Intro läuft nur EINMAL, danach übernimmt buildLoop
-  // (der seinen eigenen repeat:-1 hat) dauerhaft den Loop-Teil. Startet
-  // pausiert – erst wenn die Card in den Viewport scrollt, geht's los.
-  const master = gsap.timeline({ paused: true });
-  master.to([ideWindow, browserWindow], {
-    opacity: 1,
-    y: 0,
-    duration: TIMING.entranceDuration,
-    ease: 'power3.out',
-    stagger: TIMING.entranceStagger,
-  });
-  master.add(buildLoop, `-=${TIMING.contentStartOverlap}`);
-
-  const observer = new IntersectionObserver(
-    (entries) => {
-      entries.forEach((entry) => {
-        if (entry.isIntersecting) {
-          master.play();
-          observer.unobserve(root);
-        }
-      });
-    },
-    { threshold: IN_VIEW_THRESHOLD }
-  );
-  observer.observe(root);
+  waitForStylesReady(linesContainer, start);
 }
