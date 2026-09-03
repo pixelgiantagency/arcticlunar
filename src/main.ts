@@ -1,6 +1,7 @@
 import { initGsapCore, revealAfterSetup, initScrollRefreshFixes } from './global';
 import { initDotsGrid } from './components/dots-grid';
 import { initHeroIntro } from './components/hero-intro';
+import { initLogoMarquee } from './components/logo-marquee';
 import { initTextReveal } from './components/text-reveal';
 import { initGlobe } from './components/globe';
 import { initCodeShowcase } from './components/code-showcase';
@@ -13,6 +14,7 @@ function init(): void {
 
   initDotsGrid();
   initHeroIntro();
+  initLogoMarquee();
   initTextReveal();
   initGlobe();
   initCodeShowcase();
