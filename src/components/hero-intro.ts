@@ -11,12 +11,28 @@ import { getLenis } from '../global';
  * Läuft nur einmal pro Browser-Tab-Session (sessionStorage) und wird bei
  * prefers-reduced-motion übersprungen. gsap ist global verfügbar (CDN-Script,
  * siehe src/types/ .d.ts – analog zu hub-flow.ts, kein Import nötig).
+ * ScrollTrigger ist ebenfalls global verfügbar (wird in global.ts per
+ * gsap.registerPlugin(ScrollTrigger, ...) registriert).
  *
  * Zum Testen per URL-Parameter überschreibbar (kein Effekt auf echte
  * Besucher, da kein Standardpfad):
  *   ?hero-intro=play  → Animation läuft immer, ignoriert sessionStorage
  *                        und prefers-reduced-motion
  *   ?hero-intro=skip  → Animation wird immer übersprungen
+ *
+ * FOUC-Schutz für die Heading: hero-intro.css versteckt auch
+ * [data-hero-intro-heading] dauerhaft per opacity:0; visibility:hidden,
+ * bis JS sie explizit wieder sichtbar macht. Das ist bewusst so, obwohl
+ * wir ihre natürliche Endposition/-größe per getBoundingClientRect()
+ * messen müssen (siehe finalRect unten) — opacity/visibility beeinflussen
+ * die Layout-Messung NICHT, ein unsichtbares Element hat trotzdem ganz
+ * normal messbare Maße. Ohne dieses Hiding würde man kurz den vollen,
+ * fertigen Heading-Text in Normalgröße/-position sehen, bevor JS
+ * übernimmt (Race zwischen Bundle-Laden und Rendering). Die Heading wird
+ * deshalb erst per autoAlpha:1 sichtbar gemacht, GENAU in dem Moment, in
+ * dem sie schon in ihre große, mittige Intro-Position transformiert ist
+ * (siehe gsap.set(heading, ...) unten) — so sieht man nie ihren
+ * "Normalzustand" oder einen Sprung dorthin.
  *
  * Wichtig: Während des Tippens wird die Höhe der Heading per Inline-Style
  * auf die fertige Zwei-Zeilen-Höhe fixiert (siehe initHeroIntro). Ohne das
@@ -66,10 +82,19 @@ import { getLenis } from '../global';
  *      nativ und wird von lenis.stop() NICHT abgedeckt. Diese Ebene ist
  *      auf Mobile die eigentlich entscheidende.
  *
- * Wichtig zu clearProps: hero-intro.css setzt Subheadline/Button/Logo-
- * Marquee/Dots/Nav dauerhaft auf opacity:0; visibility:hidden als FOUC-
- * Schutz, solange kein JS gelaufen ist. GSAPs autoAlpha überschreibt das
- * per Inline-Style, der per CSS-Spezifität immer gewinnt — ABER nur
+ * Refresh nach dem Unlock: global.ts löst über initScrollRefreshFixes()
+ * ein ScrollTrigger.refresh() bei window "load" (+100ms) und bei
+ * document.fonts.ready aus — beide können während der Intro-Sequenz feuern,
+ * also während der Scroll-Lock (inkl. padding-right-Kompensation für die
+ * versteckte Scrollbar) aktiv ist. unlockScroll() stößt deshalb nach
+ * Wiederherstellung des normalen Layouts selbst ein lenis.resize() +
+ * ScrollTrigger.refresh() an, damit auf Basis des jetzt korrekten Zustands
+ * neu gemessen wird.
+ *
+ * Wichtig zu clearProps: hero-intro.css setzt Heading/Subheadline/Button/
+ * Logo-Marquee/Dots/Nav dauerhaft auf opacity:0; visibility:hidden als
+ * FOUC-Schutz, solange kein JS gelaufen ist. GSAPs autoAlpha überschreibt
+ * das per Inline-Style, der per CSS-Spezifität immer gewinnt — ABER nur
  * solange dieser Inline-Style bestehen bleibt. clearProps: 'all' nach der
  * Reveal-Animation würde auch opacity/visibility wieder entfernen und
  * damit sofort wieder die CSS-Regel greifen lassen (Element verschwindet
@@ -192,6 +217,17 @@ function unlockScroll(): void {
   document.documentElement.style.touchAction = scrollLockPrevious.htmlTouchAction;
 
   scrollLockPrevious = null;
+
+  // Ein während des Locks gefeuertes ScrollTrigger.refresh() (siehe
+  // initScrollRefreshFixes() in global.ts) kann veraltete Scroll-/Pin-
+  // Dimensionen gecacht haben (z.B. für einen Footer-Curtain-Effekt) —
+  // siehe ausführliche Erklärung im Datei-Kommentar oben. rAF, damit der
+  // Browser die gerade wiederhergestellten Styles erst layoutet, bevor
+  // neu gemessen wird.
+  requestAnimationFrame(() => {
+    getLenis()?.resize();
+    ScrollTrigger.refresh();
+  });
 }
 
 // Rendert die Zeilen statisch (fertig getippt), z.B. für den Skip-Fall
@@ -299,6 +335,10 @@ export function initHeroIntro(): void {
 
   if (skipAnimation) {
     renderStaticLines(heading, HERO_INTRO_CONFIG.lines);
+    // Heading steht NICHT in allIntroTargets (die haben zusätzlich einen
+    // y-Reset nötig, den die Heading nicht braucht) — eigener, expliziter
+    // Reveal hier, siehe Datei-Kommentar oben zum FOUC-Schutz der Heading.
+    gsap.set(heading, { autoAlpha: 1 });
     gsap.set(allIntroTargets, { autoAlpha: 1, y: 0 });
     return;
   }
@@ -311,6 +351,9 @@ export function initHeroIntro(): void {
   const fontsReady = document.fonts?.ready ?? Promise.resolve();
 
   fontsReady.then(() => {
+    // getBoundingClientRect() funktioniert korrekt, obwohl die Heading via
+    // CSS aktuell opacity:0/visibility:hidden ist — Layout-Maße bleiben
+    // davon unberührt (siehe Datei-Kommentar oben zum FOUC-Schutz).
     const finalRect = heading.getBoundingClientRect();
 
     const desiredScale =
@@ -340,6 +383,11 @@ export function initHeroIntro(): void {
       x: deltaX,
       y: deltaY,
       scale,
+      // Erst HIER sichtbar machen — genau in dem Moment, in dem die
+      // Heading schon in ihre große, mittige Intro-Position transformiert
+      // ist. So sieht man nie ihren normalen End-Zustand oder einen
+      // Sprung dorthin (siehe Datei-Kommentar oben).
+      autoAlpha: 1,
     });
     if (dots) gsap.set(dots, { autoAlpha: 0 });
     gsap.set([...revealTargets, ...logosTargets], {
@@ -361,7 +409,8 @@ export function initHeroIntro(): void {
           // Fixierte Höhe wieder freigeben, damit die Heading an ihrer
           // finalen Position wieder normal responsiv (auto-Höhe) bleibt.
           heading.style.height = '';
-          // Heading ist jetzt am Ziel angekommen — Scroll wieder freigeben.
+          // Heading ist jetzt am Ziel angekommen — Scroll wieder freigeben
+          // (inkl. ScrollTrigger/Lenis-Refresh, siehe Datei-Kommentar oben).
           unlockScroll();
         },
       });

@@ -1,10 +1,17 @@
 // src/components/footer-reveal-curve.ts
 
+import { getLenis } from '../global';
+
 const FOOTER_GRADIENT_CONFIG = {
   /** Opacity bei Scroll-Fortschritt 0. Der Maximalwert kommt nicht von hier,
    * sondern wird live aus der im Designer eingestellten Opacity des
    * Gradient-Elements gelesen (aktuell 13%). */
   minOpacity: 0,
+  /** Debounce für den ResizeObserver-Refresh unten — verhindert mehrfache
+   * ScrollTrigger.refresh()-Aufrufe hintereinander, wenn z.B. mehrere
+   * Lazy-Load-Bilder kurz nacheinander laden und jeweils die Dokumenthöhe
+   * ändern. */
+  resizeRefreshDebounceMs: 150,
 } as const;
 
 export function initFooterRevealCurve(): void {
@@ -56,4 +63,20 @@ export function initFooterRevealCurve(): void {
       }
     },
   });
+
+  // Body-Größenänderungen (Lazy-Load-Bilder, nachträglich geladene Fonts/
+  // Components etc.) sollen ScrollTrigger neu vermessen lassen. WICHTIG:
+  // lenis.resize() muss hier im selben Atemzug mitlaufen wie
+  // ScrollTrigger.refresh() - sonst bleibt Lenis' eigene, unabhängige
+  // Scroll-Limit-Berechnung veraltet, obwohl ScrollTrigger selbst schon
+  // aktuell ist. Gleiches Prinzip wie in global.ts, initScrollRefreshFixes().
+  let refreshTimeout: number | undefined;
+  const resizeObserver = new ResizeObserver(() => {
+    window.clearTimeout(refreshTimeout);
+    refreshTimeout = window.setTimeout(() => {
+      getLenis()?.resize();
+      ScrollTrigger.refresh();
+    }, FOOTER_GRADIENT_CONFIG.resizeRefreshDebounceMs);
+  });
+  resizeObserver.observe(document.body);
 }

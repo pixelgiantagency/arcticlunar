@@ -1,5 +1,6 @@
 /* src/styles/hero-intro.css */
 
+[data-hero-intro] [data-hero-intro-heading],
 [data-hero-intro] [data-hero-intro-dots],
 [data-hero-intro] [data-hero-intro-subheadline],
 [data-hero-intro] [data-hero-intro-button],

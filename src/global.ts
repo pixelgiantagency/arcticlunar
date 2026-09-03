@@ -32,14 +32,27 @@ export function getLenis(): Lenis | undefined {
 }
 
 export function initScrollRefreshFixes(): void {
+  // lenis.resize() UND ScrollTrigger.refresh() müssen hier im Paar laufen:
+  // ScrollTrigger.refresh() aktualisiert nur ScrollTriggers eigene
+  // Trigger-/Pin-Positionen. Lenis führt eine komplett eigene, unabhängige
+  // Messung der maximalen Scroll-Distanz (limit). Ändert sich die
+  // Dokumenthöhe nach Lenis' Initialisierung (typischerweise durch
+  // Web-Font-Tausch), bleibt Lenis' limit sonst auf dem alten, zu kleinen
+  // Wert stehen - Mausrad-Scrollen (läuft über Lenis) wird dann VOR dem
+  // echten Seitenende gekappt, obwohl ScrollTrigger selbst schon korrekt
+  // aktualisiert ist. Nativer Scrollbar-Drag umgeht Lenis komplett und ist
+  // deshalb davon nicht betroffen. Gleiches Pärchen wie in hero-intro.ts,
+  // unlockScroll().
   window.addEventListener('load', () => {
     setTimeout(() => {
+      getLenis()?.resize();
       ScrollTrigger.refresh();
     }, 100);
   });
 
   if (document.fonts && document.fonts.ready) {
     document.fonts.ready.then(() => {
+      getLenis()?.resize();
       ScrollTrigger.refresh();
     });
   }
