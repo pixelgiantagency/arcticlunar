@@ -116,7 +116,7 @@ const CONFIG: HubFlowConfig = {
   nodeFill: 'var(--_theme---background--card-visual-light)',
   nodeStroke: 'transparent',
 
-  icon: { outerSize: 20, centerSize: 32 },
+  icon: { outerSize: 16, centerSize: 32 },
 
   line: {
     color: 'var(--_theme---border-color--secondary)',
