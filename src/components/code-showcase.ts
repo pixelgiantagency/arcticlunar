@@ -434,20 +434,56 @@ function revealCardGroup(
   });
 }
 
+// Prüft gezielt, ob bundle.css (nicht nur Webflows natives CSS) aktiv
+// ist - über ein unsichtbares Test-Element mit der eigenen
+// @keyframes-Animation, die ausschließlich in code-showcase.css steht.
+function isComponentCssReady(): boolean {
+  const probe = document.createElement('span');
+  probe.className = 'code-showcase_cursor';
+  probe.style.position = 'absolute';
+  probe.style.visibility = 'hidden';
+  probe.style.pointerEvents = 'none';
+  document.body.appendChild(probe);
+  const animationName = getComputedStyle(probe).animationName;
+  probe.remove();
+  return animationName === 'code-showcase-blink';
+}
+
 // bundle.css wird laut Konventionen dynamisch nachgeladen (kein
 // blockierendes <link> im HTML) - es gibt also keine Garantie, dass es
-// fertig ist, bevor dieses Skript läuft. Ohne das CSS würde die
-// Font-Size beim Browser-Default (~16px) statt bei den erwarteten
-// ~0.4rem liegen, was scrollWidth-Messungen falsch macht und Text in der
-// (noch nicht aktiven) Token-Farbe unsichtbar wirken lässt. Deshalb
-// erst starten, wenn die erwartete kleine Font-Size wirklich greift.
-function waitForStylesReady(el: HTMLElement, callback: () => void, attempts = 0): void {
+// fertig ist, bevor dieses Skript läuft. WICHTIG: Die Font-Size von
+// .code-showcase_ide-lines kommt aus Webflows EIGENEM, nativem CSS (das
+// separat und praktisch immer sofort da ist) - sie allein ist also KEIN
+// verlässliches Signal dafür, ob bundle.css selbst (Token-Farben,
+// Cursor-Animation) schon geladen ist. Deshalb zusätzlich gezielt
+// bundle.css prüfen (isComponentCssReady).
+//
+// ZUSATZ: hero-intro.ts sperrt beim Page-Load-Intro kurzzeitig den
+// Scroll (document.documentElement.style.overflow = 'hidden'), teils
+// mehrere Sekunden lang (Tippen + Halten + Schrumpfen). Die Freigabe
+// danach kann je nach Scrollbar-Sichtbarkeit die effektive
+// Viewport-Breite und damit über das fluide 100vw-Scaling-System die
+// Root-Font-Size verschieben. Wenn code-showcase seine (einmaligen)
+// Layout-Messungen VOR dieser Freigabe macht, werden sie durch die
+// spätere Verschiebung ungültig - deshalb zusätzlich auf das Ende
+// dieses Locks warten. attempts-Deckel deutlich höher als vorher, weil
+// der Lock mehrere Sekunden dauern kann.
+function waitForStylesReady(
+  el: HTMLElement,
+  callback: () => void,
+  startTime: number = performance.now()
+): void {
   const fontSize = parseFloat(getComputedStyle(el).fontSize);
-  if ((fontSize > 0 && fontSize < 10) || attempts > 90) {
+  const webflowCssReady = fontSize > 0 && fontSize < 10;
+  const componentCssReady = isComponentCssReady();
+  const scrollNotLocked = document.documentElement.style.overflow !== 'hidden';
+  const elapsedMs = performance.now() - startTime;
+
+  if ((webflowCssReady && componentCssReady && scrollNotLocked) || elapsedMs > 15000) {
     callback();
     return;
   }
-  requestAnimationFrame(() => waitForStylesReady(el, callback, attempts + 1));
+  requestAnimationFrame(() => waitForStylesReady(el, callback, startTime));
 }
 
 export function initCodeShowcase(): void {
